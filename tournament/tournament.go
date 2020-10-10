@@ -9,116 +9,82 @@ import (
 	"strings"
 )
 
-type clubScore struct {
+type teamScore struct {
+	name   string
 	win    int
 	loss   int
 	draw   int
 	points int
+	mp     int
 }
 
-type sortClub struct {
-	name   string
-	points int
-}
-
-var club map[string]*clubScore
 var err error
 
 // Tally generates soccer tournament tally
 func Tally(reader io.Reader, buffer io.Writer) error {
-	club = map[string]*clubScore{}
-	rd := bufio.NewReader(reader)
-
-	for {
-		line, err := rd.ReadString('\n')
-
-		if err == io.EOF {
-			if err = fillMap(line); err != nil {
-				return err
-			}
-			break
+	team := make(map[string]teamScore)
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-
-		if err = fillMap(line); err != nil {
-			return err
+		s := strings.Split(line, ";")
+		if len(s) != 3 {
+			return errors.New("Invalid line: Data provided = " + line + " ; expecting line with exactly 2 semicolons")
 		}
+		a := team[s[0]]
+		a.name = s[0]
+		b := team[s[1]]
+		b.name = s[1]
+		switch s[2] {
+		case "win":
+			a.win++
+			a.points += 3
+			b.loss++
+		case "loss":
+			b.win++
+			b.points += 3
+			a.loss++
+		case "draw":
+			a.draw++
+			a.points++
+			b.draw++
+			b.points++
+		default:
+			return errors.New("Invalid result: Value Provided = " + s[2] + "; Expected either win,loss or draw ")
+		}
+		a.mp++
+		b.mp++
+		team[s[0]] = a
+		team[s[1]] = b
+
+	}
+	if err := scanner.Err(); err != nil {
+		return err
 	}
 
-	sortC := make([]sortClub, 0, len(club))
-	for k := range club {
-		sortC = append(sortC, sortClub{name: k, points: club[k].points})
+	sortC := make([]teamScore, 0, len(team))
+	for k := range team {
+		sortC = append(sortC, team[k])
 	}
-	sortClubs(sortC)
 
-	_, err := io.WriteString(buffer, "Team                           | MP |  W |  D |  L |  P\n")
+	sort.Slice(sortC, func(i, j int) bool {
+		ci, cj := sortC[i], sortC[j]
+		if ci.points != cj.points {
+			return ci.points > cj.points
+		}
+		return ci.name < cj.name
+	})
+
+	_, err := fmt.Fprintf(buffer, "Team                           | MP |  W |  D |  L |  P\n")
 	if err != nil {
 		return err
 	}
+
 	for _, c := range sortC {
-		s := fmt.Sprintf("%-31v|%3v |%3v |%3v |%3v |%3v\n", c.name, club[c.name].win+club[c.name].loss+club[c.name].draw, club[c.name].win, club[c.name].draw, club[c.name].loss, club[c.name].points)
-		if _, err := io.WriteString(buffer, s); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func update(c string, r []string) error {
-	if len(r) < 3 {
-		return errors.New("Incomplete result")
-	}
-
-	result := strings.Replace(r[2], "\n", "", -1)
-	if c == r[0] && result == "win" {
-		club[c].win++
-		club[c].points += 3
-		return nil
-	} else if c == r[0] && result == "loss" {
-		club[c].loss++
-		return nil
-	} else if c == r[1] && result == "win" {
-		club[c].loss++
-		return nil
-	} else if c == r[1] && result == "loss" {
-		club[c].win++
-		club[c].points += 3
-		return nil
-	} else if result == "draw" {
-		club[c].draw++
-		club[c].points++
-		return nil
-	}
-	return errors.New("No if condition captured")
-}
-
-func sortClubs(clubs []sortClub) {
-	sort.SliceStable(clubs, func(i, j int) bool {
-		ci, cj := clubs[i], clubs[j]
-		switch {
-		case ci.points != cj.points:
-			return ci.points > cj.points
-		default:
-			return ci.name < cj.name
-		}
-	})
-}
-
-func fillMap(result string) error {
-
-	if len(result) > 1 && string(result[0]) != "#" {
-		s := strings.Split(result, ";")
-		if _, ok := club[s[0]]; !ok {
-			club[s[0]] = &clubScore{}
-		}
-		if err = update(s[0], s); err != nil {
-			return err
-		}
-
-		if _, ok := club[s[1]]; !ok {
-			club[s[1]] = &clubScore{}
-		}
-
-		if err = update(s[1], s); err != nil {
+		_, err := fmt.Fprintf(buffer, "%-31v|%3v |%3v |%3v |%3v |%3v\n", c.name, c.mp, c.win, c.draw, c.loss, c.points)
+		if err != nil {
 			return err
 		}
 	}

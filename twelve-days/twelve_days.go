@@ -2,10 +2,7 @@ package twelve
 
 import "fmt"
 
-type words map[int]string
-
-var m words
-var trail [12]string
+var m map[int]string
 
 //Verse - single verse line
 func Verse(num int) string {
@@ -13,7 +10,6 @@ func Verse(num int) string {
 	if num < 1 || num > 12 {
 		return fmt.Sprintf("Error: Verse Number proided %v; expecting number between 1-12", num)
 	}
-
 	return m[num]
 }
 
